@@ -47,27 +47,57 @@ async def start(update: Update, context: ContextTypes.DEFAULT_TYPE):
     if context.args:
         try:
             referrer_id = int(context.args[0])
-        except:
+        except (ValueError, IndexError):
             referrer_id = None
 
         if referrer_id and referrer_id != user_id:
             conn = psycopg2.connect(os.environ["DATABASE_URL"])
             c = conn.cursor()
+            try:
+                # Check if new user
+                c.execute("SELECT * FROM users WHERE user_id = %s", (user_id,))
+                already_exists = c.fetchone()
 
-            # Check if new user
+                if not already_exists:
+                    # Add new user with referral
+                    c.execute("INSERT INTO users (user_id, messages, referrer_id) VALUES (%s, %s, %s)",
+                              (user_id, 0, referrer_id))
+                    c.execute("""
+                        INSERT INTO referrals (referrer_id, referred_id)
+                        VALUES (%s, %s)
+                        ON CONFLICT (referred_id) DO NOTHING
+                    """, (referrer_id, user_id))
+                    BONUS_MESSAGES = 250
+                    c.execute("UPDATE users SET messages = messages + %s WHERE user_id = %s",
+                              (BONUS_MESSAGES, referrer_id))
+                    conn.commit()
+                    await update.message.reply_text(f"Bot started! Referred by {referrer_id}. You and referrer got {BONUS_MESSAGES} bonus messages!")
+                else:
+                    await update.message.reply_text("Bot started! You’re already registered.")
+            except psycopg2.Error as e:
+                print(f"Database error: {e}")
+                await update.message.reply_text("Error processing referral. Try again later.")
+            finally:
+                conn.close()
+        else:
+            await update.message.reply_text("Bot started! Invalid or self-referral detected.")
+    else:
+        conn = psycopg2.connect(os.environ["DATABASE_URL"])
+        c = conn.cursor()
+        try:
             c.execute("SELECT * FROM users WHERE user_id = %s", (user_id,))
             already_exists = c.fetchone()
-
             if not already_exists:
-                # Add new user with referral
                 c.execute("INSERT INTO users (user_id, messages, referrer_id) VALUES (%s, %s, %s)",
-                          (user_id, 0, referrer_id))
-                c.execute("INSERT OR IGNORE INTO referrals (referrer_id, referred_id) VALUES (%s, %s)",
-                          (referrer_id, user_id))
-                BONUS_MESSAGES = 250
-                c.execute("UPDATE users SET messages = messages + %s WHERE user_id = %s",
-                          (BONUS_MESSAGES, referrer_id))
+                          (user_id, 0, None))
                 conn.commit()
+                await update.message.reply_text("Bot started! Welcome as a new user!")
+            else:
+                await update.message.reply_text("Bot started! Welcome back!")
+        except psycopg2.Error as e:
+            print(f"Database error: {e}")
+            await update.message.reply_text("Error registering user. Try again later.")
+        finally:
             conn.close()
 
     # Menu එක පෙන්නන්න
