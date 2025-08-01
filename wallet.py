@@ -6,8 +6,15 @@ from cryptography.hazmat.backends import default_backend
 from solders.keypair import Keypair
 import psycopg2
 
+# Check AES_PASSWORD from environment and convert hex string to bytes
+AES_PASSWORD_HEX = os.environ.get("AES_PASSWORD")
+if not AES_PASSWORD_HEX:
+    print("i need AES_PASSWORD")
+    AES_PASSWORD = b""  # Default to empty bytes if not set
+else:
+    print("i AES_PASSWORD")
+    AES_PASSWORD = bytes.fromhex(AES_PASSWORD_HEX)  # Convert hex string to bytes
 
-AES_PASSWORD = os.environ.get("AES_PASSWORD") 
 # Use Railway PostgreSQL
 conn = psycopg2.connect(os.environ["DATABASE_URL"])
 c = conn.cursor()
@@ -43,13 +50,27 @@ def decrypt_private_key(encrypted_data: bytes, password: bytes) -> bytes:
 
 # --- DB Ops ---
 def save_encrypted_key(user_id: int, encrypted_key: bytes):
-    c.execute("INSERT OR REPLACE INTO swap_users(user_id, encrypted_privkey) VALUES (%s, %s)", (user_id, encrypted_key))
-    conn.commit()
+    conn = psycopg2.connect(os.environ["DATABASE_URL"])
+    c = conn.cursor()
+    try:
+        c.execute("""
+            INSERT INTO swap_users (user_id, encrypted_privkey, wallet_address)
+            VALUES (%s, %s, NULL)
+            ON CONFLICT (user_id) DO UPDATE SET encrypted_privkey = %s
+        """, (user_id, encrypted_key, encrypted_key))
+        conn.commit()
+    finally:
+        conn.close()
 
 def get_encrypted_key(user_id: int) -> bytes | None:
-    c.execute("SELECT encrypted_privkey FROM swap_users WHERE user_id=%s", (user_id,))
-    row = c.fetchone()
-    return row[0] if row else None
+    conn = psycopg2.connect(os.environ["DATABASE_URL"])
+    c = conn.cursor()
+    try:
+        c.execute("SELECT encrypted_privkey FROM swap_users WHERE user_id = %s", (user_id,))
+        row = c.fetchone()
+        return row[0] if row else None
+    finally:
+        conn.close()
 
 # --- Wallet Ops ---
 def generate_wallet() -> Keypair:
