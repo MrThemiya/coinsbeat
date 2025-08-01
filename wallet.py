@@ -12,17 +12,19 @@ if not AES_PASSWORD:
     print("i need AES_PASSWORD")
 else:
     print("i AES_PASSWORD")
-    AES_PASSWORD = AES_PASSWORD.encode('utf-8')  # Convert to bytes for AES
+   
 
+# Use Railway PostgreSQL
 # Use Railway PostgreSQL
 conn = psycopg2.connect(os.environ["DATABASE_URL"])
 c = conn.cursor()
 
 # --- DB Setup ---
 c.execute("""
-CREATE TABLE IF NOT EXISTS users (
+CREATE TABLE IF NOT EXISTS swap_users (
     user_id INTEGER PRIMARY KEY,
-    encrypted_privkey BYTEA
+    encrypted_privkey BYTEA,
+    wallet_address TEXT
 )
 """)
 conn.commit()
@@ -48,27 +50,13 @@ def decrypt_private_key(encrypted_data: bytes, password: bytes) -> bytes:
 
 # --- DB Ops ---
 def save_encrypted_key(user_id: int, encrypted_key: bytes):
-    conn = psycopg2.connect(os.environ["DATABASE_URL"])
-    c = conn.cursor()
-    try:
-        c.execute("""
-            INSERT INTO users (user_id, encrypted_privkey)
-            VALUES (%s, %s)
-            ON CONFLICT (user_id) DO UPDATE SET encrypted_privkey = %s
-        """, (user_id, encrypted_key, encrypted_key))
-        conn.commit()
-    finally:
-        conn.close()
+    c.execute("INSERT OR REPLACE INTO swap_users(user_id, encrypted_privkey) VALUES (%s, %s)", (user_id, encrypted_key))
+    conn.commit()
 
 def get_encrypted_key(user_id: int) -> bytes | None:
-    conn = psycopg2.connect(os.environ["DATABASE_URL"])
-    c = conn.cursor()
-    try:
-        c.execute("SELECT encrypted_privkey FROM users WHERE user_id = %s", (user_id,))
-        row = c.fetchone()
-        return row[0] if row else None
-    finally:
-        conn.close()
+    c.execute("SELECT encrypted_privkey FROM swap_users WHERE user_id=%s", (user_id,))
+    row = c.fetchone()
+    return row[0] if row else None
 
 # --- Wallet Ops ---
 def generate_wallet() -> Keypair:
