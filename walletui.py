@@ -11,7 +11,6 @@ from wallet import (
     save_encrypted_key,
     encrypt_private_key,
     get_encrypted_key,
-    AES_PASSWORD,
     decode_base58_private_key,
     decrypt_private_key,
     load_keypair
@@ -37,27 +36,33 @@ async def create_wallet(update_or_callback_query, context):
     # Check if user already has a wallet
     conn = psycopg2.connect(os.environ["DATABASE_URL"])
     c = conn.cursor()
-    c.execute("CREATE TABLE IF NOT EXISTS users (user_id INTEGER PRIMARY KEY, wallet_address TEXT)")
-    c.execute("SELECT wallet_address FROM users WHERE user_id=%s", (user_id,))
-    row = c.fetchone()
-    if row and row[0]:
-        await update_or_callback_query.message.reply_text(
-            "⚠️ You already have a wallet. Please delete it first before creating a new one."
-        )
+    try:
+        c.execute("CREATE TABLE IF NOT EXISTS users (user_id INTEGER PRIMARY KEY, wallet_address TEXT)")
+        c.execute("SELECT wallet_address FROM users WHERE user_id = %s", (user_id,))
+        row = c.fetchone()
+        if row and row[0]:
+            await update_or_callback_query.message.reply_text(
+                "⚠️ You already have a wallet. Please delete it first before creating a new one."
+            )
+            return
+    finally:
         conn.close()
-        return
 
     # Create new wallet
     keypair = generate_wallet()
     privkey_bytes = bytes(keypair)
-    encrypted = encrypt_private_key(privkey_bytes, AES_PASSWORD)
+    encrypted = encrypt_private_key(privkey_bytes, os.environ.get("AES_PASSWORD", ""))
     save_encrypted_key(user_id, encrypted)
 
     # Save public address to users table
-    c.execute("INSERT INTO users(user_id) VALUES (%s) ON CONFLICT (user_id) DO NOTHING", (user_id,))
-    c.execute("UPDATE users SET wallet_address = %s WHERE user_id = %s", (str(keypair.pubkey()), user_id))
-    conn.commit()
-    conn.close()
+    conn = psycopg2.connect(os.environ["DATABASE_URL"])
+    c = conn.cursor()
+    try:
+        c.execute("INSERT INTO users (user_id) VALUES (%s) ON CONFLICT (user_id) DO NOTHING", (user_id,))
+        c.execute("UPDATE users SET wallet_address = %s WHERE user_id = %s", (str(keypair.pubkey()), user_id))
+        conn.commit()
+    finally:
+        conn.close()
 
     await update_or_callback_query.message.reply_text(
         f"🎉 Wallet created!\n\n*Public Address:*\n`{keypair.pubkey()}`",
@@ -87,16 +92,18 @@ async def import_wallet(update: Update, context: ContextTypes.DEFAULT_TYPE):
         return
 
     try:
-        encrypted = encrypt_private_key(privkey_bytes, AES_PASSWORD)
+        encrypted = encrypt_private_key(privkey_bytes, os.environ.get("AES_PASSWORD", ""))
         save_encrypted_key(user_id, encrypted)
         keypair = load_keypair(privkey_bytes)
 
         conn = psycopg2.connect(os.environ["DATABASE_URL"])
         c = conn.cursor()
-        c.execute("INSERT INTO users(user_id) VALUES (%s) ON CONFLICT (user_id) DO NOTHING", (user_id,))
-        c.execute("UPDATE users SET wallet_address = %s WHERE user_id = %s", (str(keypair.pubkey()), user_id))
-        conn.commit()
-        conn.close()
+        try:
+            c.execute("INSERT INTO users (user_id) VALUES (%s) ON CONFLICT (user_id) DO NOTHING", (user_id,))
+            c.execute("UPDATE users SET wallet_address = %s WHERE user_id = %s", (str(keypair.pubkey()), user_id))
+            conn.commit()
+        finally:
+            conn.close()
 
         await update.message.reply_text(
             f"✅ Wallet imported!\n\n*Public Address:*\n`{keypair.pubkey()}`",
@@ -128,9 +135,7 @@ async def buy(update: Update, context: ContextTypes.DEFAULT_TYPE):
         return
 
     try:
-        logger.info(f"AES_PASSWORD type: {type(AES_PASSWORD)}, value: {AES_PASSWORD}")
-        logger.info(f"Calling perform_swap with args: user_id={user_id}, input_mint={SYSTEM_SOL}, output_mint={token_mint}, amount={amount_sol}, aes_password={AES_PASSWORD}")
-        tx_sig = await perform_swap(user_id, SYSTEM_SOL, token_mint, amount_sol, AES_PASSWORD)
+        tx_sig = await perform_swap(user_id, SYSTEM_SOL, token_mint, amount_sol, os.environ.get("AES_PASSWORD", ""))
         await update.message.reply_text(
             f"✅ Buy transaction sent!\n🔗 https://solscan.io/tx/{tx_sig}"
         )
@@ -160,9 +165,7 @@ async def sell(update: Update, context: ContextTypes.DEFAULT_TYPE):
         return
 
     try:
-        logger.info(f"AES_PASSWORD type: {type(AES_PASSWORD)}, value: {AES_PASSWORD}")
-        logger.info(f"Calling perform_swap with args: user_id={user_id}, input_mint={token_mint}, output_mint={SYSTEM_SOL}, amount={amount_tokens}, aes_password={AES_PASSWORD}")
-        tx_sig = await perform_swap(user_id, token_mint, SYSTEM_SOL, amount_tokens, AES_PASSWORD)
+        tx_sig = await perform_swap(user_id, token_mint, SYSTEM_SOL, amount_tokens, os.environ.get("AES_PASSWORD", ""))
         await update.message.reply_text(
             f"✅ Sell transaction sent!\n🔗 https://solscan.io/tx/{tx_sig}"
         )
@@ -184,27 +187,17 @@ async def balance(update, context):
         return
 
     try:
-        logger.info(f"Decrypting key for user {user_id}")
-        privkey_bytes = decrypt_private_key(encrypted, AES_PASSWORD)
-        logger.info(f"Private key length: {len(privkey_bytes)} bytes")
-
-        logger.info("Loading keypair")
+        privkey_bytes = decrypt_private_key(encrypted, os.environ.get("AES_PASSWORD", ""))
         keypair = load_keypair(privkey_bytes)
         pubkey_obj = keypair.pubkey()
-        logger.info(f"Public key: {str(pubkey_obj)}")
 
-        logger.info("Connecting to Solana RPC")
         async with AsyncClient("https://api.mainnet-beta.solana.com") as client:
-            logger.info("Fetching SOL balance")
             sol_balance_resp = await client.get_balance(pubkey_obj)
-            logger.info(f"SOL balance response type: {type(sol_balance_resp)}, value: {sol_balance_resp}")
             sol_lamports = sol_balance_resp.value
             sol = sol_lamports / 1_000_000_000
 
-            logger.info("Fetching token accounts")
             opts = TokenAccountOpts(program_id=Pubkey.from_string("TokenkegQfeZyiNwAJbNbGKPFXCWuBvf9Ss623VQ5DA"))
             token_accounts_resp = await client.get_token_accounts_by_owner_json_parsed(owner=pubkey_obj, opts=opts)
-            logger.info(f"Token accounts response type: {type(token_accounts_resp)}, value: {token_accounts_resp}")
 
             token_lines = []
             for acc in token_accounts_resp.value:
@@ -225,7 +218,6 @@ async def balance(update, context):
 
             token_text = "\n".join(token_lines) if token_lines else "_No SPL tokens found_"
 
-            logger.info("Sending balance response to user")
             await update.effective_message.reply_text(
                 f"📍 *Wallet Address:*\n`{str(pubkey_obj)}`\n\n"
                 f"💰 *SOL:* {sol:.4f} SOL\n\n"
