@@ -11,6 +11,7 @@ from wallet import (
     save_encrypted_key,
     encrypt_private_key,
     get_encrypted_key,
+    AES_PASSWORD,
     decode_base58_private_key,
     decrypt_private_key,
     load_keypair
@@ -51,7 +52,7 @@ async def create_wallet(update_or_callback_query, context):
     # Create new wallet
     keypair = generate_wallet()
     privkey_bytes = bytes(keypair)
-    encrypted = encrypt_private_key(privkey_bytes, os.environ.get("AES_PASSWORD", ""))
+    encrypted = encrypt_private_key(privkey_bytes, AES_PASSWORD)
     save_encrypted_key(user_id, encrypted)
 
     # Save public address to users table
@@ -92,7 +93,7 @@ async def import_wallet(update: Update, context: ContextTypes.DEFAULT_TYPE):
         return
 
     try:
-        encrypted = encrypt_private_key(privkey_bytes, os.environ.get("AES_PASSWORD", ""))
+        encrypted = encrypt_private_key(privkey_bytes, AES_PASSWORD)
         save_encrypted_key(user_id, encrypted)
         keypair = load_keypair(privkey_bytes)
 
@@ -135,7 +136,7 @@ async def buy(update: Update, context: ContextTypes.DEFAULT_TYPE):
         return
 
     try:
-        tx_sig = await perform_swap(user_id, SYSTEM_SOL, token_mint, amount_sol, os.environ.get("AES_PASSWORD", ""))
+        tx_sig = await perform_swap(user_id, SYSTEM_SOL, token_mint, amount_sol, AES_PASSWORD)
         await update.message.reply_text(
             f"✅ Buy transaction sent!\n🔗 https://solscan.io/tx/{tx_sig}"
         )
@@ -165,7 +166,7 @@ async def sell(update: Update, context: ContextTypes.DEFAULT_TYPE):
         return
 
     try:
-        tx_sig = await perform_swap(user_id, token_mint, SYSTEM_SOL, amount_tokens, os.environ.get("AES_PASSWORD", ""))
+        tx_sig = await perform_swap(user_id, token_mint, SYSTEM_SOL, amount_tokens, AES_PASSWORD)
         await update.message.reply_text(
             f"✅ Sell transaction sent!\n🔗 https://solscan.io/tx/{tx_sig}"
         )
@@ -187,7 +188,7 @@ async def balance(update, context):
         return
 
     try:
-        privkey_bytes = decrypt_private_key(encrypted, os.environ.get("AES_PASSWORD", ""))
+        privkey_bytes = decrypt_private_key(encrypted, AES_PASSWORD)
         keypair = load_keypair(privkey_bytes)
         pubkey_obj = keypair.pubkey()
 
