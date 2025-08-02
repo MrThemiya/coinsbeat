@@ -15,7 +15,6 @@ from solana.rpc.api import Client
 from solders.address_lookup_table_account import AddressLookupTableAccount
 import logging
 from spl.token.async_client import AsyncToken
-
 from wallet import decrypt_private_key, get_encrypted_key, load_keypair
 from fee import create_fee_instruction
 from limits import check_access
@@ -30,8 +29,7 @@ RPC_URL = os.environ.get("RPC_URL")
 if not RPC_URL:
     print("i need RPC_URL")
 else:
-
-    print("i have RPC_URL")# Your QuickNode RPC
+    print("i have RPC_URL")  # Your QuickNode RPC
 
 QUOTE_API = os.environ.get("QUOTE_API")
 if not QUOTE_API:
@@ -44,7 +42,6 @@ if not TX_API:
     print("i need TX_API")
 else:
     print("i have TX_API")
- # Jupiter API
 
 SYSTEM_SOL = "So11111111111111111111111111111111111111112"
 MINIMUM_SOL_BALANCE = 0.005  # Estimated transaction fees
@@ -138,7 +135,9 @@ async def get_address_lookup_table_accounts(client: AsyncClient, keys: list[str]
 # --- Perform Swap ---
 async def perform_swap(user_id: int, input_mint: str, output_mint: str, amount: float, aes_password: bytes) -> str:
     logger.info(f"perform_swap called with user_id={user_id}, input_mint={input_mint}, output_mint={output_mint}, amount={amount}")
-    if not check_access(user_id, "swap"):
+    if not isinstance(user_id, int):
+        raise ValueError(f"Invalid user_id: {user_id} is not an integer")
+    if not check_access(user_id, "buy_sell"):  # Changed "swap" to "buy_sell" to match access rules
         raise Exception("❌ Swap available only for Plus or Pro users.")
 
     encrypted = get_encrypted_key(user_id)
