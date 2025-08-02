@@ -663,7 +663,7 @@ async def button_handler(update: Update, context: ContextTypes.DEFAULT_TYPE):
         # Check if user has wallet
         conn = psycopg2.connect(os.environ["DATABASE_URL"])
         c = conn.cursor()
-        c.execute("SELECT wallet_address FROM users WHERE user_id = %s", (user_id,))
+        c.execute("SELECT wallet_address FROM swap_users WHERE user_id = %s", (user_id,))
         row = c.fetchone()
         conn.close()
 
@@ -679,7 +679,7 @@ async def button_handler(update: Update, context: ContextTypes.DEFAULT_TYPE):
     elif data == 'delete_wallet':
         conn = psycopg2.connect(os.environ["DATABASE_URL"])
         c = conn.cursor()
-        c.execute("UPDATE users SET wallet_address = NULL WHERE user_id = %s", (user_id,))
+        c.execute("UPDATE swap_users SET wallet_address = NULL WHERE user_id = %s", (user_id,))
         conn.commit()
         conn.close()
 
