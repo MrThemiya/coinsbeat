@@ -563,14 +563,16 @@ async def button_handler(update: Update, context: ContextTypes.DEFAULT_TYPE):
         return
     
     elif data == 'auto_news_settings':
-        
-        if not check_access("news", user_id):
+    # Access control: Pro users only
+        user_id = update.effective_user.id  # Fetch correct user_id from callback query
+        if not check_access(user_id, "news"):  # Correct order: user_id first, service second
             await context.bot.send_message(
                chat_id=user_id,
                text="🚫 Auto News is a *Pro* feature only. Please upgrade your package.",
                parse_mode="Markdown"
             )
             return
+    # Add further auto news settings logic here if needed
         
         conn = psycopg2.connect(os.environ["DATABASE_URL"])
         c = conn.cursor()
