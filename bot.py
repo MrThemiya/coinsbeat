@@ -71,7 +71,7 @@ async def start(update: Update, context: ContextTypes.DEFAULT_TYPE):
                     c.execute("UPDATE users SET messages = messages + %s WHERE user_id = %s",
                               (BONUS_MESSAGES, referrer_id))
                     conn.commit()
-                    await update.message.reply_text(f"Bot started! Referred by {referrer_id}. You and referrer got {BONUS_MESSAGES} bonus messages!")
+                    await update.message.reply_text(f"Bot started! Referred by {referrer_id}. referrer got {BONUS_MESSAGES} bonus messages!")
                 else:
                     await update.message.reply_text("Bot started! You’re already registered.")
             except psycopg2.Error as e:
@@ -91,9 +91,7 @@ async def start(update: Update, context: ContextTypes.DEFAULT_TYPE):
                 c.execute("INSERT INTO users (user_id, messages, referrer_id) VALUES (%s, %s, %s)",
                           (user_id, 0, None))
                 conn.commit()
-                await update.message.reply_text("Bot started! Welcome as a new user!")
-            else:
-                await update.message.reply_text("Bot started!")
+            
         except psycopg2.Error as e:
             print(f"Database error: {e}")
             await update.message.reply_text("Error registering user. Try again later.")
