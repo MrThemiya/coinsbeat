@@ -26,6 +26,7 @@ def init_airdrop_db():
     try:
         # Add last_airdrop_sent column to users table if not exists
         c.execute("ALTER TABLE users ADD COLUMN IF NOT EXISTS last_airdrop_sent TEXT")
+        logger.info("Checked/added last_airdrop_sent column to users table")
     except psycopg2.Error as e:
         logger.error(f"Failed to alter users table: {e}")
     try:
@@ -41,6 +42,7 @@ def init_airdrop_db():
                 created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
             )
         """)
+        logger.info("Created/verified airdrops table with created_at column")
     except psycopg2.Error as e:
         logger.error(f"Failed to create airdrops table: {e}")
     conn.commit()
