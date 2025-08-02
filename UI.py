@@ -768,8 +768,9 @@ async def button_handler(update: Update, context: ContextTypes.DEFAULT_TYPE):
         return
 
     elif data == 'airdrop_alerts':
-        # Access control: Pro users only
-        if not check_access("airdrop", user_id):
+    # Access control: Pro users only
+        user_id = update.effective_user.id  # Fetch correct user_id from callback query
+        if not check_access(user_id, "airdrop"):  # Correct order: user_id first, service second
             await context.bot.send_message(
                 chat_id=user_id,
                 text="🚫 Airdrop alerts are a Pro feature only. Please upgrade."
