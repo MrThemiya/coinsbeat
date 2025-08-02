@@ -12,7 +12,7 @@ import logging
 logging.basicConfig(level=logging.INFO, format='%(asctime)s - %(levelname)s - %(message)s')
 logger = logging.getLogger(__name__)
 
-# === API source (replace with real one) ===
+# === API source ===
 AIRDROP_SOURCE_URL = os.environ.get("AIRDROP_SOURCE_URL")
 if not AIRDROP_SOURCE_URL:
     logger.error("AIRDROP_SOURCE_URL environment variable not set")
@@ -24,10 +24,12 @@ def init_airdrop_db():
     conn = psycopg2.connect(os.environ["DATABASE_URL"])
     c = conn.cursor()
     try:
-        c.execute("ALTER TABLE users ADD COLUMN last_airdrop_sent TEXT")
-    except psycopg2.Error:
-        pass  # Column might already exist
+        # Add last_airdrop_sent column to users table if not exists
+        c.execute("ALTER TABLE users ADD COLUMN IF NOT EXISTS last_airdrop_sent TEXT")
+    except psycopg2.Error as e:
+        logger.error(f"Failed to alter users table: {e}")
     try:
+        # Create airdrops table with created_at
         c.execute("""
             CREATE TABLE IF NOT EXISTS airdrops (
                 id TEXT PRIMARY KEY,
@@ -40,7 +42,7 @@ def init_airdrop_db():
             )
         """)
     except psycopg2.Error as e:
-        logger.error(f"Failed to initialize airdrops table: {e}")
+        logger.error(f"Failed to create airdrops table: {e}")
     conn.commit()
     conn.close()
 
@@ -180,7 +182,7 @@ async def manual_airdrop_alert(update: Update, context: ContextTypes.DEFAULT_TYP
 
 # === Register everything ===
 def register_airdrop_handlers(application):
-    init_airdrop_db()
+    init_airdrop_db()  # Ensure table is created on startup
 
     application.add_handler(CommandHandler("airdrop_alert", manual_airdrop_alert))
 
@@ -189,7 +191,7 @@ def register_airdrop_handlers(application):
     scheduler.add_job(lambda: send_daily_airdrop_alerts(application), "interval", hours=24)  # Alert 1x/day
     scheduler.start()
 
-    fetch_and_store_airdrops()
+    fetch_and_store_airdrops()  # Initial fetch
 
 
 
