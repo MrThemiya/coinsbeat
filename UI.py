@@ -789,13 +789,15 @@ async def button_handler(update: Update, context: ContextTypes.DEFAULT_TYPE):
         return
 
     elif data == 'buy_sell':
-        # Access control: plus and pro users only
-        if not check_access("buy_sell", user_id):
+    # Access control: plus and pro users only
+        user_id = update.effective_user.id  # Fetch correct user_id from callback query
+        if not check_access(user_id, "buy_sell"):  # Correct order: user_id first, service second
             await context.bot.send_message(
                 chat_id=user_id,
                 text="🚫 Buy & Sell feature is available for Plus and Pro users only. Please upgrade."
             )
             return
+    # Add further buy/sell logic here if needed
         # You can trigger your buy/sell UI flow here
         keyboard = InlineKeyboardMarkup([
            [InlineKeyboardButton("🛒 Buy Token", callback_data='start_buy')],
