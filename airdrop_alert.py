@@ -30,9 +30,10 @@ def init_airdrop_db():
     except psycopg2.Error as e:
         logger.error(f"Failed to alter users table: {e}")
     try:
-        # Create airdrops table with created_at
+        # Create or recreate airdrops table with created_at
+        c.execute("DROP TABLE IF EXISTS airdrops")  # Force recreate to ensure schema
         c.execute("""
-            CREATE TABLE IF NOT EXISTS airdrops (
+            CREATE TABLE airdrops (
                 id TEXT PRIMARY KEY,
                 name TEXT,
                 network TEXT,
@@ -42,9 +43,9 @@ def init_airdrop_db():
                 created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
             )
         """)
-        logger.info("Created/verified airdrops table with created_at column")
+        logger.info("Recreated airdrops table with created_at column")
     except psycopg2.Error as e:
-        logger.error(f"Failed to create airdrops table: {e}")
+        logger.error(f"Failed to recreate airdrops table: {e}")
     conn.commit()
     conn.close()
 
@@ -91,7 +92,11 @@ def fetch_and_store_airdrops():
 def get_stored_airdrops(limit=5):
     conn = psycopg2.connect(os.environ["DATABASE_URL"])
     c = conn.cursor()
-    c.execute("SELECT id, name, network, category, description, url FROM airdrops ORDER BY created_at DESC LIMIT %s", (limit,))
+    try:
+        c.execute("SELECT id, name, network, category, description, url FROM airdrops ORDER BY created_at DESC LIMIT %s", (limit,))
+    except psycopg2.Error as e:
+        logger.error(f"Query failed, falling back to unordered selection: {e}")
+        c.execute("SELECT id, name, network, category, description, url FROM airdrops LIMIT %s", (limit,))  # Fallback
     rows = c.fetchall()
     conn.close()
 
@@ -184,7 +189,7 @@ async def manual_airdrop_alert(update: Update, context: ContextTypes.DEFAULT_TYP
 
 # === Register everything ===
 def register_airdrop_handlers(application):
-    init_airdrop_db()  # Ensure table is created on startup
+    init_airdrop_db()  # Ensure table is recreated on startup
 
     application.add_handler(CommandHandler("airdrop_alert", manual_airdrop_alert))
 
