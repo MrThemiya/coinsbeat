@@ -337,13 +337,13 @@ def main_menu_keyboard():
         [InlineKeyboardButton("🪙 Get Token Price", callback_data='price')],
 
         [InlineKeyboardButton("📈 Price Alerts", callback_data='price_alert_menu'),
-         InlineKeyboardButton("🎁 Airdrop Alerts", callback_data='airdrop_alerts')],
+         InlineKeyboardButton("🚀 Airdrop Alerts", callback_data='airdrop_alerts')],
 
         [InlineKeyboardButton("📰 News", callback_data='news'),
          InlineKeyboardButton("📡 Signals", url="https://t.me/Classic_Coincodecap")],
 
         [InlineKeyboardButton("💳 Wallet", callback_data='wallet_menu'),
-         InlineKeyboardButton("📦 Package Info", callback_data='pcu_info')],
+         InlineKeyboardButton("💎 Package Info", callback_data='pcu_info')],
 
         [InlineKeyboardButton("⭐️ Upgrade", callback_data='upgrade'),
          InlineKeyboardButton("🎁 Referral", callback_data='referral'),
@@ -531,9 +531,9 @@ async def button_handler(update: Update, context: ContextTypes.DEFAULT_TYPE):
         await query.edit_message_text(
            "🤖 *Bot Help\n\n"
             "• back to menu /start\n"
-            "• Set price alerts with /price\n"
+            "• Set price alerts with /add\n"
             "• Check wallet balance with /balance\n"
-            "• Upgrade your plan with /upgrade\n"
+            "• Contact Support [info@coinsbeat.com]\n"
             "• Need full guide? [coinsbeat.com](https://coinsbeat.com/telegram-crypto-trading-bot/)"
         )
         return
