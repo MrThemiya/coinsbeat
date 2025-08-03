@@ -1,7 +1,7 @@
 import requests
 import psycopg2
 from telegram import Update
-from telegram.ext import ContextTypes
+from telegram.ext import ContextTypes, Application
 import datetime
 from apscheduler.schedulers.asyncio import AsyncIOScheduler
 import asyncio
@@ -201,11 +201,14 @@ def register_news_scheduler(application):
     init_news_db()
     scheduler = AsyncIOScheduler()
 
-    # Use application.run_async to run the async task
-    scheduler.add_job(application.run_async(send_auto_news_alerts), "interval", hours=1)
+    # Use a function to run the async task with the application context
+    async def run_send_auto_news_alerts(app):
+        await send_auto_news_alerts(app)
+
+    scheduler.add_job(lambda: asyncio.run(run_send_auto_news_alerts(application)), "interval", hours=1)
     scheduler.add_job(clear_old_news, "cron", hour=0)
-    scheduler.add_job(application.run_async(send_weekly_promo), "cron", day_of_week='sun', hour=10)
+    scheduler.add_job(lambda: asyncio.run(send_weekly_promo(application)), "cron", day_of_week='sun', hour=10)
     scheduler.start()
     logger.info("✅ News scheduler started.")
-    # Initial run using run_async
-    application.run_async(send_auto_news_alerts)(application)
+    # Initial run
+    asyncio.run(run_send_auto_news_alerts(application))
