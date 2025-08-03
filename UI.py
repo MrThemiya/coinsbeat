@@ -781,10 +781,12 @@ async def button_handler(update: Update, context: ContextTypes.DEFAULT_TYPE):
 
         from airdrop_alert import get_latest_airdrops
         text = get_latest_airdrops()
+        from telegram.helpers import escape_markdown
+        escaped_text = escape_markdown(text, version=2)
         await context.bot.send_message(
             chat_id=user_id,
-            text=text,
-            parse_mode="Markdown"
+            text=escaped_text,
+            parse_mode="MarkdownV2"
         )
         return
 

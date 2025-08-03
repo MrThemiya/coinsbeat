@@ -135,7 +135,6 @@ async def set_bot_commands(app):
         BotCommand("start", "Start the bot"),
         BotCommand("price", "Get current token price"),
         BotCommand("price_alert_menu", "Set price alert"),
-        BotCommand("upgrade", "View subscription plans"),
         BotCommand("help", "Help using the bot"),
     ]
     await app.bot.set_my_commands(commands)
