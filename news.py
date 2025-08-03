@@ -16,7 +16,6 @@ logging.basicConfig(level=logging.INFO, format='%(asctime)s - %(levelname)s - %(
 logger = logging.getLogger(__name__)
 
 # === TwitterAPI.io Config ===
-
 API_KEY = os.environ.get("TWITTER_API_KEY")
 if not API_KEY:
     print("i needTWITTER_API_KEY")
@@ -24,7 +23,6 @@ else:
     print("i have TWITTER_API_KEY")
 BASE_URL = "https://api.twitterapi.io"
 HEADERS = {"X-API-Key": API_KEY}
-
 
 # === Clean tweet text (remove URLs) ===
 def clean_text(text):
@@ -78,19 +76,17 @@ def init_news_db():
     conn = psycopg2.connect(os.environ["DATABASE_URL"])
     c = conn.cursor()
 
-    # sent_news සහ last_tweet කියන table 2ක් හදනවා
+    # sent_news and last_tweet tables
     c.execute("CREATE TABLE IF NOT EXISTS sent_news (tweet_id TEXT PRIMARY KEY, tweet TEXT, date_sent TEXT)")
     c.execute("CREATE TABLE IF NOT EXISTS last_tweet (id INTEGER PRIMARY KEY, tweet_id TEXT)")
 
-    # users table එකේ තියෙන columns බලනවා
+    # Check and add columns to users table
     c.execute("SELECT column_name FROM information_schema.columns WHERE table_name = 'users'")
-    columns = [row[0] for row in c.fetchall()]  # column names list එකක්
+    columns = [row[0] for row in c.fetchall()]
 
-    # auto_news column එක නැතිනම් එක add කරනවා
     if 'auto_news' not in columns:
         c.execute("ALTER TABLE users ADD COLUMN auto_news INTEGER DEFAULT 1")
 
-    # package column එක add කරන්නත් හොඳයි (pro user check වලට)
     if 'package' not in columns:
         c.execute("ALTER TABLE users ADD COLUMN package TEXT DEFAULT 'free'")
 
@@ -205,12 +201,11 @@ def register_news_scheduler(application):
     init_news_db()
     scheduler = AsyncIOScheduler()
 
-    async def scheduled_task():
-        await send_auto_news_alerts(application)
-
-    scheduler.add_job(lambda: asyncio.create_task(scheduled_task()), "interval", hours=1)
+    # Use application.run_async to run the async task
+    scheduler.add_job(application.run_async(send_auto_news_alerts), "interval", hours=1)
     scheduler.add_job(clear_old_news, "cron", hour=0)
-    scheduler.add_job(lambda: asyncio.create_task(send_weekly_promo(application)), "cron", day_of_week='sun', hour=10)
+    scheduler.add_job(application.run_async(send_weekly_promo), "cron", day_of_week='sun', hour=10)
     scheduler.start()
     logger.info("✅ News scheduler started.")
-    asyncio.create_task(scheduled_task())
+    # Initial run using run_async
+    application.run_async(send_auto_news_alerts)(application)
