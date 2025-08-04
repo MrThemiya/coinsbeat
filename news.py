@@ -76,9 +76,10 @@ def init_news_db():
     conn = psycopg2.connect(os.environ["DATABASE_URL"])
     c = conn.cursor()
 
-    # sent_news and last_tweet tables
+    # sent_news, last_tweet, and last_sent_tweet tables
     c.execute("CREATE TABLE IF NOT EXISTS sent_news (tweet_id TEXT PRIMARY KEY, tweet TEXT, date_sent TEXT)")
     c.execute("CREATE TABLE IF NOT EXISTS last_tweet (id INTEGER PRIMARY KEY, tweet_id TEXT)")
+    c.execute("CREATE TABLE IF NOT EXISTS last_sent_tweet (id INTEGER PRIMARY KEY, tweet_id TEXT)")
 
     # Check and add columns to users table
     c.execute("SELECT column_name FROM information_schema.columns WHERE table_name = 'users'")
@@ -163,13 +164,22 @@ async def send_auto_news_alerts(context: ContextTypes.DEFAULT_TYPE):
     conn = psycopg2.connect(os.environ["DATABASE_URL"])
     c = conn.cursor()
     c.execute("CREATE TABLE IF NOT EXISTS sent_news (tweet_id TEXT PRIMARY KEY, tweet TEXT, date_sent TEXT)")
-    c.execute("SELECT tweet_id FROM sent_news WHERE date_sent = %s", (today,))
-    already_sent_ids = set(row[0] for row in c.fetchall())
+    c.execute("CREATE TABLE IF NOT EXISTS last_sent_tweet (id INTEGER PRIMARY KEY, tweet_id TEXT)")
+    c.execute("SELECT tweet_id FROM last_sent_tweet WHERE id = 1")
+    result = c.fetchone()
+    last_sent_tweet_id = result[0] if result else None
 
-    new_tweets = [(tweet_id, text) for tweet_id, text in all_tweets if tweet_id not in already_sent_ids]
+    # Filter only new tweets compared to the last sent tweet
+    new_tweets = []
+    if all_tweets:
+        latest_tweet_id = all_tweets[0][0]
+        if last_sent_tweet_id is None or latest_tweet_id != last_sent_tweet_id:
+            new_tweets = all_tweets
+            c.execute("INSERT INTO last_sent_tweet (id, tweet_id) VALUES (1, %s) ON CONFLICT (id) DO UPDATE SET tweet_id = EXCLUDED.tweet_id", (str(latest_tweet_id),))
+
     if not new_tweets:
         conn.close()
-        logger.info("No fresh tweets to send.")
+        logger.info("No new tweets to send.")
         return
 
     for tweet_id, text in new_tweets:
