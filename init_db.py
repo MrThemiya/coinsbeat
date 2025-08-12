@@ -8,7 +8,7 @@ cursor = conn.cursor()
 # users.db tables
 cursor.execute("""
     CREATE TABLE IF NOT EXISTS users (
-        user_id INTEGER PRIMARY KEY,
+        user_id BIGINT PRIMARY KEY,
         region TEXT,
         package TEXT,
         price REAL,
@@ -18,7 +18,7 @@ cursor.execute("""
         last_airdrop_sent TEXT,
         messages_sent INTEGER DEFAULT 0,
         messages INTEGER DEFAULT 0,
-        referrer_id INTEGER,
+        referrer_id BIGINT,
         auto_news INTEGER DEFAULT 1,
         paid INTEGER DEFAULT 0
     );
@@ -33,7 +33,7 @@ cursor.execute("""
 
 cursor.execute("""
     CREATE TABLE IF NOT EXISTS alerts (
-        user_id INTEGER,
+        user_id BIGINT,
         symbol TEXT,
         threshold REAL
     );
@@ -49,8 +49,8 @@ cursor.execute("""
 
 cursor.execute("""
     CREATE TABLE IF NOT EXISTS referrals (
-        referrer_id INTEGER,
-        referred_id INTEGER PRIMARY KEY
+        referrer_id BIGINT,
+        referred_id BIGINT PRIMARY KEY
     );
 """)
 
@@ -68,7 +68,7 @@ cursor.execute("""
 # swap_users.db table
 cursor.execute("""
     CREATE TABLE IF NOT EXISTS swap_users (
-        user_id INTEGER PRIMARY KEY,
+        user_id BIGINT PRIMARY KEY,
         encrypted_privkey BYTEA,
         wallet_address TEXT
     );
@@ -86,7 +86,7 @@ cursor.execute("""
 # referrals.db tables
 cursor.execute("""
     CREATE TABLE IF NOT EXISTS referral_data (
-        user_id INTEGER PRIMARY KEY,
+        user_id BIGINT PRIMARY KEY,
         messages_remaining INTEGER DEFAULT 0,
         expiry TIMESTAMP
     );
@@ -94,8 +94,8 @@ cursor.execute("""
 
 cursor.execute("""
     CREATE TABLE IF NOT EXISTS referral_tracking (
-        referee_id INTEGER PRIMARY KEY,
-        referrer_id INTEGER,
+        referee_id BIGINT PRIMARY KEY,
+        referrer_id BIGINT,
         timestamp TIMESTAMP
     );
 """)
