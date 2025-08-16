@@ -103,7 +103,6 @@ SYMBOLS = {
     'wal': 'walrus-2',
     'pyth': 'pyth-network',
     'xtz': 'tezos',
-    'pendle': 'pendle',
     'dog' : 'dog-go-to-the-moon-rune',
     'ar' : 'arweave'
 
@@ -131,7 +130,6 @@ DEX_URLS = {
     'bch': 'https://api.dexscreener.com/latest/dex/pairs/bsc/0x1fd22fa7274bafebdfb1881321709f1219744829',
     'avax': 'https://api.dexscreener.com/latest/dex/pairs/bsc/0x9f11264d6d0d9671dab2cc485eb6ec1b502c4025',
     'ton': 'https://api.dexscreener.com/latest/dex/pairs/solana/7rqvzaqnkzolfmwcbsvwb4bqnmjupgnzr8ebwsk4b8q1',
-    'xlm': 'https://api.dexscreener.com/latest/dex/pairs/solana/gsw1og5wnaqysq9bzbgvb86xm84oav4wkcw2fztr3xae',
     'shib': 'https://api.dexscreener.com/latest/dex/pairs/bsc/0x14c594222106283dd6d155b9d00a943b94153066',
     'ltc': 'https://api.dexscreener.com/latest/dex/pairs/bsc/0x6b9e3825e39203277f8fd33371e36b5188b26410',
     'hbar': 'https://api.dexscreener.com/latest/dex/pairs/solana/9diphq6pqndxtwmqaxzmx1isv7kfrr86ty6cbkd9nkpv',
