@@ -101,23 +101,28 @@ async def start(update: Update, context: ContextTypes.DEFAULT_TYPE):
     # Menu එක පෙන්නන්න
     await menu(update, context)
 
-ADMIN_ID = 1400222917  # replace with your Telegram ID
+ADMIN_ID = int(os.environ.get("ADMIN_ID", "1400222917"))  # replace with your Telegram ID
 
 async def broadcast(update: Update, context: ContextTypes.DEFAULT_TYPE):
-    if update.effective_user.id != ADMIN_ID:
-        await update.message.reply_text(" Unauthorized.")
+    user_id = update.effective_user.id
+    if user_id != ADMIN_ID:
+        await update.message.reply_text("❌ You are not authorized to use this command.")
         return
 
+    # Join the arguments into a message
+    if not context.args:
+        await update.message.reply_text("Usage: /broadcast Your message here")
+        return
     message = " ".join(context.args)
-    if not message:
-        await update.message.reply_text(" Usage: /broadcast Your message here")
-        return
 
-    conn = psycopg2.connect(os.environ["DATABASE_URL"])
-    c = conn.cursor()
-    c.execute("SELECT user_id FROM users")
-    user_ids = [row[0] for row in c.fetchall()]
-    conn.close()
+    try:
+        with psycopg2.connect(os.environ["DATABASE_URL"]) as conn:
+            with conn.cursor() as cur:
+                cur.execute("SELECT user_id FROM users")
+                user_ids = [row[0] for row in cur.fetchall()]
+    except Exception as e:
+        await update.message.reply_text(f"Database error while fetching users: {e}")
+        return
 
     sent, failed = 0, 0
     for uid in user_ids:
@@ -125,16 +130,17 @@ async def broadcast(update: Update, context: ContextTypes.DEFAULT_TYPE):
             await context.bot.send_message(chat_id=uid, text=message)
             sent += 1
         except Exception as e:
-            print(f"Failed to send to {uid}: {e}")
+            logger.error(f"Failed to send to {uid}: {e}")
             failed += 1
 
+    await update.message.reply_text(f"📢 Broadcast sent to {sent} users.\n⚠️ Failed: {failed}")
     await update.message.reply_text(f"Broadcast sent to {sent} users.\n Failed: {failed}")
 
 async def set_bot_commands(app):
     commands = [
         BotCommand("start", "Start the bot"),
         BotCommand("price", "Get current token price"),
-        BotCommand("price_alert_menu", "Set price alert"),
+        BotCommand("add", "Set price alert"),
         BotCommand("help", "Help using the bot"),
     ]
     await app.bot.set_my_commands(commands)
