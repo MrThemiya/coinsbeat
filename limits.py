@@ -6,17 +6,17 @@ import logging
 # Set up logging
 logger = logging.getLogger(__name__)
 
-# Use Railway PostgreSQL
-conn = psycopg2.connect(os.environ["DATABASE_URL"])
-c = conn.cursor()
+DATABASE_URL = os.environ["DATABASE_URL"]
 
 # --- Get current user's package (free, plus, pro)
 def get_user_package(user_id: int) -> str:
     try:
         user_id = int(user_id)  # Convert to int, raises ValueError if invalid
-        c.execute("SELECT package FROM users WHERE user_id = %s", (user_id,))
-        row = c.fetchone()
-        return row[0] if row and row[0] else "free"
+        with psycopg2.connect(DATABASE_URL) as conn:
+            with conn.cursor() as cur:
+                cur.execute("SELECT package FROM users WHERE user_id = %s", (user_id,))
+                row = cur.fetchone()
+                return row[0] if row and row[0] else "free"
     except ValueError:
         logger.error(f"Invalid user_id: {user_id} is not an integer")
         return "free"
@@ -26,15 +26,33 @@ def get_user_package(user_id: int) -> str:
 
 # --- Get how many messages user has sent this month
 def get_user_message_count(user_id: int) -> int:
-    c.execute("SELECT messages_sent FROM users WHERE user_id = %s", (user_id,))
-    row = c.fetchone()
-    return row[0] if row else 0
+    try:
+        with psycopg2.connect(DATABASE_URL) as conn:
+            with conn.cursor() as cur:
+                cur.execute("SELECT messages_sent FROM users WHERE user_id = %s", (user_id,))
+                row = cur.fetchone()
+                return row[0] if row else 0
+    except psycopg2.Error as e:
+        logger.error(f"Database error in get_user_message_count: {e}")
+        return 0
 
 # --- Add 1 to message counter
 def increment_message_count(user_id: int):
-    c.execute("INSERT INTO users (user_id, messages_sent) VALUES (%s, 0) ON CONFLICT (user_id) DO NOTHING", (user_id,))
-    c.execute("UPDATE users SET messages_sent = messages_sent + 1 WHERE user_id = %s", (user_id,))
-    conn.commit()
+    try:
+        with psycopg2.connect(DATABASE_URL) as conn:
+            with conn.cursor() as cur:
+                cur.execute(
+                    "INSERT INTO users (user_id, messages_sent) VALUES (%s, 0) "
+                    "ON CONFLICT (user_id) DO NOTHING",
+                    (user_id,)
+                )
+                cur.execute(
+                    "UPDATE users SET messages_sent = messages_sent + 1 WHERE user_id = %s",
+                    (user_id,)
+                )
+                conn.commit()
+    except psycopg2.Error as e:
+        logger.error(f"Database error in increment_message_count: {e}")
 
 # --- Message limit based on package
 def get_message_limit(package: str) -> int:
@@ -63,9 +81,15 @@ def get_alert_limit(package: str) -> int:
 
 # --- Get current alert count from alerts table
 def get_user_alert_count(user_id: int) -> int:
-    c.execute("SELECT COUNT(*) FROM alerts WHERE user_id = %s", (user_id,))
-    row = c.fetchone()
-    return row[0] if row else 0
+    try:
+        with psycopg2.connect(DATABASE_URL) as conn:
+            with conn.cursor() as cur:
+                cur.execute("SELECT COUNT(*) FROM alerts WHERE user_id = %s", (user_id,))
+                row = cur.fetchone()
+                return row[0] if row else 0
+    except psycopg2.Error as e:
+        logger.error(f"Database error in get_user_alert_count: {e}")
+        return 0
 
 # --- Check if user can set another alert
 def can_add_alert(user_id: int) -> bool:
@@ -89,5 +113,10 @@ def check_access(user_id: int, service: str) -> bool:
 
 # --- Optional: Reset message counters monthly (run this once a month)
 def reset_message_counters():
-    c.execute("UPDATE users SET messages_sent = 0")
-    conn.commit()
+    try:
+        with psycopg2.connect(DATABASE_URL) as conn:
+            with conn.cursor() as cur:
+                cur.execute("UPDATE users SET messages_sent = 0")
+                conn.commit()
+    except psycopg2.Error as e:
+        logger.error(f"Database error in reset_message_counters: {e}")
