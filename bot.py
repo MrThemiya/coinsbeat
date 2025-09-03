@@ -29,17 +29,21 @@ logging.basicConfig(
 )
 logger = logging.getLogger(__name__)
 
-# PostgreSQL database setup
-conn = psycopg2.connect(os.environ["DATABASE_URL"])
-c = conn.cursor()
-c.execute("""
-    CREATE TABLE IF NOT EXISTS alerts (
-        user_id INTEGER,
-        symbol TEXT,
-        threshold REAL
-    )
-""")
-conn.commit()
+def init_db():
+    try:
+        with psycopg2.connect(os.environ["DATABASE_URL"]) as conn:
+            with conn.cursor() as cur:
+                cur.execute("""
+                    CREATE TABLE IF NOT EXISTS alerts (
+                        user_id INTEGER,
+                        symbol TEXT,
+                        threshold REAL
+                    )
+                """)
+                conn.commit()
+    except psycopg2.Error as e:
+        logger.error(f"Database initialization error: {e}")
+        raise
 
 async def start(update: Update, context: ContextTypes.DEFAULT_TYPE):
     user_id = update.effective_user.id
@@ -51,54 +55,49 @@ async def start(update: Update, context: ContextTypes.DEFAULT_TYPE):
             referrer_id = None
 
         if referrer_id and referrer_id != user_id:
-            conn = psycopg2.connect(os.environ["DATABASE_URL"])
-            c = conn.cursor()
             try:
-                # Check if new user
-                c.execute("SELECT * FROM users WHERE user_id = %s", (user_id,))
-                already_exists = c.fetchone()
+                with psycopg2.connect(os.environ["DATABASE_URL"]) as conn:
+                    with conn.cursor() as cur:
+                        # Check if new user
+                        cur.execute("SELECT * FROM users WHERE user_id = %s", (user_id,))
+                        already_exists = cur.fetchone()
 
-                if not already_exists:
-                    # Add new user with referral
-                    c.execute("INSERT INTO users (user_id, messages, referrer_id) VALUES (%s, %s, %s)",
-                              (user_id, 0, referrer_id))
-                    c.execute("""
-                        INSERT INTO referrals (referrer_id, referred_id)
-                        VALUES (%s, %s)
-                        ON CONFLICT (referred_id) DO NOTHING
-                    """, (referrer_id, user_id))
-                    BONUS_MESSAGES = 250
-                    c.execute("UPDATE users SET messages = messages + %s WHERE user_id = %s",
-                              (BONUS_MESSAGES, referrer_id))
-                    conn.commit()
-                    await update.message.reply_text(f"Bot started! Referred by {referrer_id}. referrer got {BONUS_MESSAGES} bonus messages!")
-                else:
-                    await update.message.reply_text("Bot started! You’re already registered.")
+                        if not already_exists:
+                            # Add new user with referral
+                            cur.execute("INSERT INTO users (user_id, messages, referrer_id) VALUES (%s, %s, %s)",
+                                      (user_id, 0, referrer_id))
+                            cur.execute("""
+                                INSERT INTO referrals (referrer_id, referred_id)
+                                VALUES (%s, %s)
+                                ON CONFLICT (referred_id) DO NOTHING
+                            """, (referrer_id, user_id))
+                            BONUS_MESSAGES = 250
+                            cur.execute("UPDATE users SET messages = messages + %s WHERE user_id = %s",
+                                      (BONUS_MESSAGES, referrer_id))
+                            conn.commit()
+                            await update.message.reply_text(f"Bot started! Referred by {referrer_id}. referrer got {BONUS_MESSAGES} bonus messages!")
+                        else:
+                            await update.message.reply_text("Bot started! You’re already registered.")
             except psycopg2.Error as e:
-                print(f"Database error: {e}")
+                logger.error(f"Database error: {e}")
                 await update.message.reply_text("Error processing referral. Try again later.")
-            finally:
-                conn.close()
         else:
             await update.message.reply_text("Bot started! Invalid or self-referral detected.")
     else:
-        conn = psycopg2.connect(os.environ["DATABASE_URL"])
-        c = conn.cursor()
         try:
-            c.execute("SELECT * FROM users WHERE user_id = %s", (user_id,))
-            already_exists = c.fetchone()
-            if not already_exists:
-                c.execute("INSERT INTO users (user_id, messages, referrer_id) VALUES (%s, %s, %s)",
-                          (user_id, 0, None))
-                conn.commit()
-            
+            with psycopg2.connect(os.environ["DATABASE_URL"]) as conn:
+                with conn.cursor() as cur:
+                    cur.execute("SELECT * FROM users WHERE user_id = %s", (user_id,))
+                    already_exists = cur.fetchone()
+                    if not already_exists:
+                        cur.execute("INSERT INTO users (user_id, messages, referrer_id) VALUES (%s, %s, %s)",
+                                  (user_id, 0, None))
+                        conn.commit()
         except psycopg2.Error as e:
-            print(f"Database error: {e}")
+            logger.error(f"Database error: {e}")
             await update.message.reply_text("Error registering user. Try again later.")
-        finally:
-            conn.close()
 
-    # Menu එක පෙන්නන්න
+    # Show menu
     await menu(update, context)
 
 ADMIN_ID = int(os.environ.get("ADMIN_ID", "1400222917"))  # replace with your Telegram ID
@@ -120,7 +119,8 @@ async def broadcast(update: Update, context: ContextTypes.DEFAULT_TYPE):
             with conn.cursor() as cur:
                 cur.execute("SELECT user_id FROM users")
                 user_ids = [row[0] for row in cur.fetchall()]
-    except Exception as e:
+    except psycopg2.Error as e:
+        logger.error(f"Database error while fetching users: {e}")
         await update.message.reply_text(f"Database error while fetching users: {e}")
         return
 
@@ -134,7 +134,6 @@ async def broadcast(update: Update, context: ContextTypes.DEFAULT_TYPE):
             failed += 1
 
     await update.message.reply_text(f"📢 Broadcast sent to {sent} users.\n⚠️ Failed: {failed}")
-    await update.message.reply_text(f"Broadcast sent to {sent} users.\n Failed: {failed}")
 
 async def set_bot_commands(app):
     commands = [
@@ -197,17 +196,22 @@ async def add_alert(update: Update, context: ContextTypes.DEFAULT_TYPE):
 
     try:
         threshold = float(threshold)
-        c.execute("INSERT INTO alerts (user_id, symbol, threshold) VALUES (%s, %s, %s)",
-                  (user_id, symbol, threshold))
-        conn.commit()
+        with psycopg2.connect(os.environ["DATABASE_URL"]) as conn:
+            with conn.cursor() as cur:
+                cur.execute("INSERT INTO alerts (user_id, symbol, threshold) VALUES (%s, %s, %s)",
+                          (user_id, symbol, threshold))
+                conn.commit()
         await update.message.reply_text(f"Alert added for {symbol.upper()} at ${threshold}.")
     except ValueError:
         await update.message.reply_text("Threshold must be a number.")
+    except psycopg2.Error as e:
+        logger.error(f"Database error in add_alert: {e}")
+        await update.message.reply_text("Error adding alert. Try again later.")
 
 async def remove_alert(update: Update, context: ContextTypes.DEFAULT_TYPE):
     user_id = update.effective_user.id
     if not can_send_message(user_id):
-        await update.message.reply_text("❌ Monthly message limit reached. Upgrade your package to continue.")
+        await update.message.reply_text("❌ Monthly message limit reached. Upgrade to Plus or Pro to continue.")
         return
     increment_message_count(user_id)
 
@@ -216,10 +220,16 @@ async def remove_alert(update: Update, context: ContextTypes.DEFAULT_TYPE):
         return
 
     symbol = context.args[0].lower()
-    c.execute("DELETE FROM alerts WHERE user_id=%s AND symbol=%s",
-              (user_id, symbol))
-    conn.commit()
-    await update.message.reply_text(f"Alert removed for {symbol.upper()}.")
+    try:
+        with psycopg2.connect(os.environ["DATABASE_URL"]) as conn:
+            with conn.cursor() as cur:
+                cur.execute("DELETE FROM alerts WHERE user_id=%s AND symbol=%s",
+                          (user_id, symbol))
+                conn.commit()
+        await update.message.reply_text(f"Alert removed for {symbol.upper()}.")
+    except psycopg2.Error as e:
+        logger.error(f"Database error in remove_alert: {e}")
+        await update.message.reply_text("Error removing alert. Try again later.")
 
 async def track_alerts(update: Update, context: ContextTypes.DEFAULT_TYPE):
     user_id = update.effective_user.id
@@ -228,9 +238,16 @@ async def track_alerts(update: Update, context: ContextTypes.DEFAULT_TYPE):
         return
     increment_message_count(user_id)
 
-    c.execute("SELECT symbol, threshold FROM alerts WHERE user_id=%s",
-              (user_id,))
-    rows = c.fetchall()
+    try:
+        with psycopg2.connect(os.environ["DATABASE_URL"]) as conn:
+            with conn.cursor() as cur:
+                cur.execute("SELECT symbol, threshold FROM alerts WHERE user_id=%s",
+                          (user_id,))
+                rows = cur.fetchall()
+    except psycopg2.Error as e:
+        logger.error(f"Database error in track_alerts: {e}")
+        await update.message.reply_text("Error fetching alerts. Try again later.")
+        return
 
     if not rows:
         await update.message.reply_text("You have no active alerts.")
@@ -244,39 +261,48 @@ async def track_alerts(update: Update, context: ContextTypes.DEFAULT_TYPE):
 async def alert_checker(app):
     while True:
         try:
-            c.execute("SELECT DISTINCT symbol FROM alerts")
-            symbols = [row[0] for row in c.fetchall()]
-            if not symbols:
-                await asyncio.sleep(60)
-                continue
+            with psycopg2.connect(os.environ["DATABASE_URL"]) as conn:
+                with conn.cursor() as cur:
+                    cur.execute("SELECT DISTINCT symbol FROM alerts")
+                    symbols = [row[0] for row in cur.fetchall()]
+                    if not symbols:
+                        await asyncio.sleep(60)
+                        continue
 
-            prices = await fetch_prices()
+                    prices = await fetch_prices()
 
-            c.execute("SELECT user_id, symbol, threshold FROM alerts")
-            alerts = c.fetchall()
+                    cur.execute("SELECT user_id, symbol, threshold FROM alerts")
+                    alerts = cur.fetchall()
 
-            for user_id, symbol, threshold in alerts:
-                current_price = prices.get(symbol)
-                if current_price is not None:
-                    if (threshold >= current_price and threshold <= current_price + 100) or \
-                       (threshold <= current_price and threshold >= current_price - 100):
-                        now = datetime.now().strftime("%Y-%m-%d %H:%M:%S")
-                        text = (
-                            f"⚠️ Alert!\n"
-                            f"{symbol.upper()} price reached ${current_price} (set threshold: ${threshold})\n"
-                            f"🕒 Time: {now}"
-                        )
-                        await app.bot.send_message(chat_id=user_id, text=text)
-                        c.execute("DELETE FROM alerts WHERE user_id=%s AND symbol=%s AND threshold=%s",
-                                  (user_id, symbol, threshold))
-                        conn.commit()
-
+                    for user_id, symbol, threshold in alerts:
+                        current_price = prices.get(symbol)
+                        if current_price is not None:
+                            if (threshold >= current_price and threshold <= current_price + 100) or \
+                               (threshold <= current_price and threshold >= current_price - 100):
+                                now = datetime.now().strftime("%Y-%m-%d %H:%M:%S")
+                                text = (
+                                    f"⚠️ Alert!\n"
+                                    f"{symbol.upper()} price reached ${current_price} (set threshold: ${threshold})\n"
+                                    f"🕒 Time: {now}"
+                                )
+                                await app.bot.send_message(chat_id=user_id, text=text)
+                                try:
+                                    with psycopg2.connect(os.environ["DATABASE_URL"]) as conn_inner:
+                                        with conn_inner.cursor() as cur_inner:
+                                            cur_inner.execute("DELETE FROM alerts WHERE user_id=%s AND symbol=%s AND threshold=%s",
+                                                           (user_id, symbol, threshold))
+                                            conn_inner.commit()
+                                except psycopg2.Error as e:
+                                    logger.error(f"Database error deleting alert: {e}")
+        except psycopg2.Error as e:
+            logger.error(f"Database error in alert_checker: {e}")
         except Exception as e:
             logger.error(f"Alert checker error: {e}")
 
         await asyncio.sleep(60)
 
 async def on_startup(app):
+    init_db()
     app.create_task(alert_checker(app))
     app.create_task(auto_price_watcher(app))
     await set_bot_commands(app)
@@ -329,4 +355,3 @@ if __name__ == "__main__":
     nest_asyncio.apply()
     print(f"datetime module: {datetime}, time class: {time}")
     asyncio.run(main())
-    

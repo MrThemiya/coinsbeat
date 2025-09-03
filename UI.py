@@ -379,7 +379,7 @@ async def menu(update: Update, context: ContextTypes.DEFAULT_TYPE):
             "🎁 Airdrop: Airdrop alerts\n"
             "💳 Wallets: Import or generate wallets.\n"
             "⭐️ Upgrade: No private key required to upgrade\n"
-            "🔋 500 msg per month.Ref friends or Upgrade to get extra\n\n"
+            "🔋 250 msg per month.Ref friends or Upgrade to get extra\n\n"
             "⚡️ Looking for a quick buy or sell? Simply paste the token CA and you're ready to go!",
             reply_markup=main_menu_keyboard()
         )

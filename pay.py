@@ -13,10 +13,10 @@ from telegram.helpers import escape_markdown
 import os
 
 # --- Config ---
-  # Replace with your Telegram bot token
+# Replace with your Telegram bot token
 BOT_PAYMENT_WALLET_SOLANA = "7BSUBgKUF3Ju735r24BLvmES2gDeZnP6ukPJbno3PkyN"  # Solana wallet
 USDT_SOLANA_MINT = "Es9vMFrzaCERmJfrF4H2FYD4KCoNkY11McCe8BenwNYB"
- # 🔁 Replace with your real Helius API key
+# 🔁 Replace with your real Helius API key
 HELIUS_API_KEY = os.environ.get("HELIUS_API_KEY")
 if not HELIUS_API_KEY:
     print("i need HELIUS_API_KEY")
@@ -24,26 +24,28 @@ else:
     print("i have HELIUS_API_KEY")
 
 # --- Database setup ---
-conn = psycopg2.connect(os.environ["DATABASE_URL"])
-c = conn.cursor()
-try:
-    c.execute("""
-    CREATE TABLE IF NOT EXISTS users (
-        user_id INTEGER PRIMARY KEY,
-        region TEXT,
-        package TEXT,
-        price REAL,
-        start_date TEXT,
-        duration TEXT,
-        wallet_address TEXT,
-        paid INTEGER DEFAULT 0
-    )
-    """)
-    conn.commit()
-except psycopg2.ProgrammingError as e:
-    if "already exists" not in str(e):
-        print(f"[ERROR] Database setup failed: {e}")
-    conn.rollback()
+def init_db():
+    try:
+        with psycopg2.connect(os.environ["DATABASE_URL"]) as conn:
+            with conn.cursor() as cur:
+                cur.execute("""
+                    CREATE TABLE IF NOT EXISTS users (
+                        user_id INTEGER PRIMARY KEY,
+                        region TEXT,
+                        package TEXT,
+                        price REAL,
+                        start_date TEXT,
+                        duration TEXT,
+                        wallet_address TEXT,
+                        paid INTEGER DEFAULT 0
+                    )
+                """)
+                conn.commit()
+    except psycopg2.Error as e:
+        if "already exists" not in str(e):
+            print(f"[ERROR] Database setup failed: {e}")
+        else:
+            print("[INFO] Users table already exists")
 
 # --- /upgrade ---
 async def start_upgrade(update: Update, context: ContextTypes.DEFAULT_TYPE):
@@ -73,8 +75,15 @@ async def select_region(update: Update, context: ContextTypes.DEFAULT_TYPE):
     }
     context.user_data['prices'] = prices
 
-    c.execute("INSERT INTO users (user_id, region) VALUES (%s, %s) ON CONFLICT (user_id) DO UPDATE SET region = EXCLUDED.region", (user_id, region))
-    conn.commit()
+    try:
+        with psycopg2.connect(os.environ["DATABASE_URL"]) as conn:
+            with conn.cursor() as cur:
+                cur.execute("INSERT INTO users (user_id, region) VALUES (%s, %s) ON CONFLICT (user_id) DO UPDATE SET region = EXCLUDED.region", (user_id, region))
+                conn.commit()
+    except psycopg2.Error as e:
+        print(f"[ERROR] Database error in select_region: {e}")
+        await query.edit_message_text("Error saving region. Please try again.")
+        return
 
     buttons = [
         [InlineKeyboardButton(f"🟢 Plus Monthly - ${prices['plus_monthly']}", callback_data="package_plus_monthly")],
@@ -109,9 +118,16 @@ async def select_package(update: Update, context: ContextTypes.DEFAULT_TYPE):
     context.user_data['selected_duration'] = duration
     context.user_data['selected_price'] = price
 
-    c.execute("SELECT wallet_address FROM users WHERE user_id=%s", (user_id,))
-    row = c.fetchone()
-    wallet_address = row[0] if row and row[0] else "Not set"
+    try:
+        with psycopg2.connect(os.environ["DATABASE_URL"]) as conn:
+            with conn.cursor() as cur:
+                cur.execute("SELECT wallet_address FROM users WHERE user_id=%s", (user_id,))
+                row = cur.fetchone()
+                wallet_address = row[0] if row and row[0] else "Not set"
+    except psycopg2.Error as e:
+        print(f"[ERROR] Database error in select_package: {e}")
+        await query.edit_message_text("Error fetching wallet address. Please try again.")
+        return
 
     # Escape wallet address for Markdown
     wallet_address_display = escape_markdown(wallet_address) if wallet_address else "Not set"
@@ -246,13 +262,20 @@ async def i_paid(update: Update, context: ContextTypes.DEFAULT_TYPE):
     user_id = update.effective_user.id
     tx_id = context.args[0] if context.args else None  # Get transaction ID if provided
 
-    c.execute("SELECT wallet_address FROM users WHERE user_id=%s", (user_id,))
-    row = c.fetchone()
-    if not row or not row[0]:
-        await update.message.reply_text("You have not set a wallet. Use /wallet to set it.")
+    try:
+        with psycopg2.connect(os.environ["DATABASE_URL"]) as conn:
+            with conn.cursor() as cur:
+                cur.execute("SELECT wallet_address FROM users WHERE user_id=%s", (user_id,))
+                row = cur.fetchone()
+                if not row or not row[0]:
+                    await update.message.reply_text("You have not set a wallet. Use /wallet to set it.")
+                    return
+                wallet_address = row[0]
+    except psycopg2.Error as e:
+        print(f"[ERROR] Database error in i_paid: {e}")
+        await update.message.reply_text("Error fetching wallet address. Try again.")
         return
 
-    wallet_address = row[0]
     package = context.user_data.get("selected_package")
     duration = context.user_data.get("selected_duration")
     price = context.user_data.get("selected_price")
@@ -265,17 +288,24 @@ async def i_paid(update: Update, context: ContextTypes.DEFAULT_TYPE):
 
     if paid:
         start_date = datetime.datetime.now().strftime("%Y-%m-%d")
-        c.execute("""
-            UPDATE users SET package=%s, price=%s, start_date=%s, duration=%s, paid=1
-            WHERE user_id=%s
-        """, (package, price, start_date, duration, user_id))
-        conn.commit()
-        await update.message.reply_text("✅ Payment confirmed! You are now subscribed.")
+        try:
+            with psycopg2.connect(os.environ["DATABASE_URL"]) as conn:
+                with conn.cursor() as cur:
+                    cur.execute("""
+                        UPDATE users SET package=%s, price=%s, start_date=%s, duration=%s, paid=1
+                        WHERE user_id=%s
+                    """, (package, price, start_date, duration, user_id))
+                    conn.commit()
+            await update.message.reply_text("✅ Payment confirmed! You are now subscribed.")
+        except psycopg2.Error as e:
+            print(f"[ERROR] Database error in i_paid: {e}")
+            await update.message.reply_text("Error confirming payment. Try again.")
     else:
         await update.message.reply_text("❌ Payment not detected. Please check your transaction and try again.")
 
 # --- Register handlers ---
 def register_payment_handlers(application):
+    init_db()
     application.add_handler(CommandHandler("upgrade", start_upgrade))
     application.add_handler(CallbackQueryHandler(select_region, pattern="^region_"))
     application.add_handler(CallbackQueryHandler(select_package, pattern="^package_"))
@@ -284,12 +314,22 @@ def register_payment_handlers(application):
 # --- Check expirations ---
 async def check_expirations(context: ContextTypes.DEFAULT_TYPE):
     current_date = datetime.datetime.now().strftime("%Y-%m-%d")
-    c.execute("SELECT user_id, start_date, duration FROM users WHERE paid = 1")
-    for row in c.fetchall():
-        user_id, start_date, duration = row
-        start = datetime.datetime.strptime(start_date, "%Y-%m-%d")
-        end = start + datetime.timedelta(days=int(duration))
-        if end.strftime("%Y-%m-%d") == current_date:
-            c.execute("UPDATE users SET paid = 0 WHERE user_id = %s", (user_id,))
-            conn.commit()
-            await context.bot.send_message(chat_id=user_id, text="⚠️ Your subscription has expired!")
+    try:
+        with psycopg2.connect(os.environ["DATABASE_URL"]) as conn:
+            with conn.cursor() as cur:
+                cur.execute("SELECT user_id, start_date, duration FROM users WHERE paid = 1")
+                for row in cur.fetchall():
+                    user_id, start_date, duration = row
+                    start = datetime.datetime.strptime(start_date, "%Y-%m-%d")
+                    end = start + datetime.timedelta(days=int(duration))
+                    if end.strftime("%Y-%m-%d") == current_date:
+                        try:
+                            with psycopg2.connect(os.environ["DATABASE_URL"]) as conn_inner:
+                                with conn_inner.cursor() as cur_inner:
+                                    cur_inner.execute("UPDATE users SET paid = 0 WHERE user_id = %s", (user_id,))
+                                    conn_inner.commit()
+                            await context.bot.send_message(chat_id=user_id, text="⚠️ Your subscription has expired!")
+                        except psycopg2.Error as e:
+                            print(f"[ERROR] Database error in check_expirations: {e}")
+    except psycopg2.Error as e:
+        print(f"[ERROR] Database error in check_expirations: {e}")
