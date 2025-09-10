@@ -38,7 +38,7 @@ async def update_prices_loop():
             print(f"Database error in update_prices_loop: {e}")
         except Exception as e:
             print(f"Price update error: {e}")
-        await asyncio.sleep(15)  # Adjusted to 60 seconds to reduce rate limit issues
+        await asyncio.sleep(30)  # Adjusted to 60 seconds to reduce rate limit issues
 
 def get_price_from_db(symbol):
     try:
