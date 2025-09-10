@@ -9,10 +9,10 @@ def init_db():
         with psycopg2.connect(os.environ["DATABASE_URL"]) as conn:
             with conn.cursor() as cur:
                 cur.execute("""
-                    CREATE TABLE IF NOT EXISTS token_prices (
+                    CREATE TABLE IF NOT EXISTS price.cache (
                         symbol TEXT PRIMARY KEY,
                         price REAL,
-                        last_updated TEXT
+                        timestamp INTEGER
                     )
                 """)
                 conn.commit()
@@ -24,26 +24,27 @@ async def update_prices_loop():
     while True:
         try:
             prices = await fetch_prices()  # ✅ uses centralized fetch_prices
-            now = datetime.utcnow().isoformat()
+            now = int(datetime.utcnow().timestamp())  # Current Unix timestamp
             with psycopg2.connect(os.environ["DATABASE_URL"]) as conn:
                 with conn.cursor() as cur:
                     for symbol, price in prices.items():
                         cur.execute(
-                            "INSERT INTO token_prices (symbol, price, last_updated) VALUES (%s, %s, %s) ON CONFLICT (symbol) DO UPDATE SET price = EXCLUDED.price, last_updated = EXCLUDED.last_updated",
+                            "INSERT INTO price.cache (symbol, price, timestamp) VALUES (%s, %s, %s) ON CONFLICT (symbol) DO UPDATE SET price = EXCLUDED.price, timestamp = EXCLUDED.timestamp",
                             (symbol, price, now)
                         )
                     conn.commit()
+            print(f"Updated prices at {datetime.utcfromtimestamp(now).strftime('%Y-%m-%d %H:%M:%S')} UTC")
         except psycopg2.Error as e:
             print(f"Database error in update_prices_loop: {e}")
         except Exception as e:
             print(f"Price update error: {e}")
-        await asyncio.sleep(15)
+        await asyncio.sleep(15)  # Adjusted to 60 seconds to reduce rate limit issues
 
 def get_price_from_db(symbol):
     try:
         with psycopg2.connect(os.environ["DATABASE_URL"]) as conn:
             with conn.cursor() as cur:
-                cur.execute("SELECT price FROM token_prices WHERE symbol=%s", (symbol,))
+                cur.execute("SELECT price FROM price.cache WHERE symbol=%s", (symbol,))
                 row = cur.fetchone()
                 return row[0] if row else None
     except psycopg2.Error as e:
